@@ -45,7 +45,7 @@ Copy-Item -LiteralPath ".\netdisk-skill\scripts" -Destination $targetSkill -Recu
 - 115 网盘：需要 Python 3.12+ 和 `p115client`；扫码登录脚本 `login.py --no-open` 只依赖标准库。
 - 123 网盘：需要 Python 3.12+、`p123client`、`requests`；依赖安装器自动处理。
 - 123 凭据：优先 `~/.123-token` 持久化 token，其次环境变量 `ENV_123_CLIENT_ID` / `ENV_123_CLIENT_SECRET`（123 开放平台应用）自动换取，或 123 网页 cookies。
-- TMDB 识别：需要 TMDB API Key（环境变量 `ENV_TMDB_API_KEY` 或 `--api-key`）。
+- TMDB 识别：需要 TMDB API Key。读取优先级：`--api-key` > 环境变量 `ENV_TMDB_API_KEY` > `~/.tmdb-api-key` 文件（`echo <key> > ~/.tmdb-api-key` 或保存为无换行文本即可）。
 - 频道监控：需要服务器/本机可访问 Telegram（`t.me/s/` 网页版）。
 - Windows 备用扫码登录：`scripts/get_cookie.ps1`（PowerShell 7）或 GitHub Releases 中的 `115-cookie-helper-*` 独立二进制。
 

@@ -75,7 +75,7 @@ python scripts/identify.py --name "侠医 (2025) {tmdb-298444}" --file "侠医.S
 
 - 115：`~/.115-cookies`（扫码登录自动写入）
 - 123：`~/.123-token`（`save_cookies.py --disk 123` 写入，或配置 `ENV_123_CLIENT_ID` / `ENV_123_CLIENT_SECRET` 自动换取）
-- TMDB：环境变量 `ENV_TMDB_API_KEY` 或 `--api-key`
+- TMDB：环境变量 `ENV_TMDB_API_KEY`、`--api-key` 或 `~/.tmdb-api-key` 文件（按优先级读取）
 
 ## 目录结构
 
