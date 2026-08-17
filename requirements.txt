@@ -1,0 +1,6 @@
+p115client
+p123client
+requests
+beautifulsoup4
+python-dotenv
+guessit
