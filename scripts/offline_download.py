@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 """
-网盘离线下载管理（115 / 123）。
+115 网盘离线下载管理。
 
-115 用法:
+用法:
     python3 offline_download.py 'magnet:?xt=urn:btih:xxx'     # 添加磁力下载
     python3 offline_download.py 'ed2k://|file|xxx|...'        # 添加 ed2k 下载
     python3 offline_download.py 'https://example.com/file.zip' # 添加 HTTP 下载
     python3 offline_download.py --list                         # 查看离线任务
     python3 offline_download.py --quota                        # 查看配额
     python3 offline_download.py --path                         # 查看下载目录
-
-123 用法（磁力）:
-    python3 offline_download.py --disk 123 'magnet:...' [上传目录ID]
 """
 
-import json
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -35,10 +30,6 @@ from lib import (
     load_cookies,
     require_success,
 )
-from netdisk import get_123_client
-
-
-# -------------------- 115（SDK 优先，网页 API 兜底） --------------------
 
 LIXIAN_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
@@ -50,7 +41,14 @@ def _lixian_headers():
     return {**LIXIAN_HEADERS, "Cookie": load_cookies()}
 
 
-def add_115_download(client, url: str, save_path: str = None):
+def response_payload(response: dict, action: str) -> dict:
+    """Return the nested data object when an API wraps its payload."""
+    response = require_success(response, action)
+    data = response.get("data")
+    return data if isinstance(data, dict) else response
+
+
+def add_download(client, url: str, save_path: str = None):
     """添加 115 离线任务：优先 SDK，缺失时使用网页 lixian API。"""
     add = getattr(client, "offline_add_url", None)
     if callable(add):
@@ -85,7 +83,7 @@ def add_115_download(client, url: str, save_path: str = None):
     print(f"   大小: {format_size(info.get('size', 0))}")
 
 
-def list_115_tasks(client):
+def list_tasks(client):
     """列出 115 离线任务。"""
     offline_list = getattr(client, "offline_list", None)
     if callable(offline_list):
@@ -136,7 +134,7 @@ def list_115_tasks(client):
         print(f"  {icon} {name} ({size}) - {pct:.1f}% [{status_text}]")
 
 
-def show_115_quota(client):
+def show_quota(client):
     """显示 115 离线配额。"""
     offline_quota = getattr(client, "offline_quota_info", None)
     if callable(offline_quota):
@@ -151,7 +149,7 @@ def show_115_quota(client):
     print(f"📊 离线下载配额: {data.get('quota', '?')} / {data.get('total', '?')}")
 
 
-def show_115_paths(client):
+def show_paths(client):
     """显示 115 离线下载目录。"""
     offline_path = getattr(client, "offline_download_path", None)
     if callable(offline_path):
@@ -172,123 +170,28 @@ def show_115_paths(client):
     print("添加任务时可直接指定保存目录：python3 offline_download.py <URL> <目录ID>")
 
 
-def response_payload(response: dict, action: str) -> dict:
-    """Return the nested data object when an API wraps its payload."""
-    response = require_success(response, action)
-    data = response.get("data")
-    return data if isinstance(data, dict) else response
-
-
-# -------------------- 123（磁力离线） --------------------
-
-def submit_123_magnet(token: str, magnet_link: str, upload_dir_id) -> dict:
-    """解析磁力链并提交视频文件下载任务（移植自 TgtoDrive add_mag.py）。"""
-    resolve_url = "https://www.123pan.com/b/api/v2/offline_download/task/resolve"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    try:
-        resolve_response = requests.post(resolve_url, headers=headers, data=json.dumps({"urls": magnet_link}), timeout=20)
-        resolve_response.raise_for_status()
-    except Exception as exc:
-        return {"code": -1, "message": f"解析磁力链失败: {exc}"}
-    resolve_data = resolve_response.json()
-    if resolve_data.get("code") != 0:
-        return {"code": -1, "message": f"解析磁力链返回错误: {resolve_data.get('message')}"}
-    if not resolve_data.get("data", {}).get("list"):
-        return {"code": -1, "message": "未找到对应的资源数据"}
-    resource_info = resolve_data["data"]["list"][0]
-    resource_id = resource_info.get("id")
-    if not resource_id:
-        return {"code": -1, "message": "无法获取资源ID"}
-
-    video_file_ids = []
-    for file in resource_info.get("files", []):
-        is_video = (
-            file.get("category") == 2
-            or file.get("name", "").lower().endswith(".mp4")
-            or file.get("name", "").lower().endswith(".mkv")
-        )
-        if is_video:
-            video_file_ids.append(file.get("id"))
-    if not video_file_ids:
-        return {"code": -1, "message": "未找到视频文件"}
-
-    submit_url = "https://www.123pan.com/b/api/v2/offline_download/task/submit"
-    submit_payload = {
-        "resource_list": [{"resource_id": resource_id, "select_file_id": video_file_ids}],
-        "upload_dir": upload_dir_id,
-    }
-    try:
-        submit_response = requests.post(submit_url, headers=headers, data=json.dumps(submit_payload), timeout=20)
-        submit_response.raise_for_status()
-    except Exception as exc:
-        return {"code": -1, "message": f"提交下载任务失败: {exc}"}
-    submit_data = submit_response.json()
-    if submit_data.get("code") != 0:
-        return {"code": -1, "message": f"提交下载任务返回错误: {submit_data.get('message')}"}
-    return submit_data
-
-
-def add_123_magnet(client, text: str, upload_dir_id=None):
-    """识别文本中的磁力链接并提交 123 离线下载。"""
-    magnet_pattern = r"magnet:\?xt=urn:btih:(?:[A-Fa-f0-9]{40}(?![A-Fa-f0-9])|[A-Za-z0-9]{32}(?![A-Za-z0-9]))(?:&.*?)?"
-    magnet_links = list(dict.fromkeys(re.findall(magnet_pattern, text)))
-    if not magnet_links:
-        fail("未找到磁力链接")
-    print(f"找到 {len(magnet_links)} 条磁力链")
-    ok_count = 0
-    for link in magnet_links:
-        result = submit_123_magnet(client.token, link, upload_dir_id)
-        if result.get("code") == 0:
-            ok_count += 1
-            print(f"✅ 已提交: {link[:80]}")
-        else:
-            print(f"❌ 提交失败: {link[:80]} - {result.get('message')}")
-    print(f"\n完成：成功 {ok_count}/{len(magnet_links)}")
-    sys.exit(0 if ok_count == len(magnet_links) else 1)
-
-
 def main():
-    if "--disk" in sys.argv:
-        disk_idx = sys.argv.index("--disk")
-        disk = sys.argv[disk_idx + 1].lower()
-        args = sys.argv[1:disk_idx] + sys.argv[disk_idx + 2:]
-    else:
-        disk = "115"
-        args = sys.argv[1:]
-
-    if disk == "123":
-        client = get_123_client()
-        if not args:
-            print("123 用法: python3 offline_download.py --disk 123 <磁力链接> [上传目录ID]")
-            sys.exit(1)
-        upload_dir_id = None
-        for a in args[1:]:
-            if a.isdigit():
-                upload_dir_id = int(a)
-                break
-        add_123_magnet(client, args[0], upload_dir_id)
-        return
-
+    args = sys.argv[1:]
     client = get_client()
+
     if "--list" in args:
-        list_115_tasks(client)
+        list_tasks(client)
     elif "--quota" in args:
-        show_115_quota(client)
+        show_quota(client)
     elif "--path" in args:
         print("📂 离线下载目录:")
-        show_115_paths(client)
+        show_paths(client)
     elif len(args) > 0:
         url = args[0]
         save_path = args[1] if len(args) > 1 else None
         print(f"⬇️ 添加离线下载: {url[:80]}{'...' if len(url) > 80 else ''}")
-        add_115_download(client, url, save_path)
+        add_download(client, url, save_path)
     else:
         print("用法:")
         print("  python3 offline_download.py <URL> [保存目录]")
         print("  python3 offline_download.py --list")
         print("  python3 offline_download.py --quota")
         print("  python3 offline_download.py --path")
-        print("  python3 offline_download.py --disk 123 <磁力链接> [上传目录ID]")
 
 
 if __name__ == "__main__":

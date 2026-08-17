@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-扫描 Telegram 频道中的网盘分享链接（115 / 123）。
+扫描 Telegram 频道中的 115 分享链接。
 
 用法:
     python3 monitor.py --channel https://t.me/s/xxx [--limit 20] [--transfer] [--target-pid <ID>]
 
-默认只列出频道最新消息和其中发现的分享链接；
+默认只列出频道最新消息和其中发现的 115 分享链接；
 加 --transfer 会把发现的链接转存到 --target-pid 指定目录。
 """
 
@@ -16,11 +16,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib import fail, load_cookies, resolve_cookies_path
-from netdisk import get_123_client, scan_telegram_channel, transfer_115_share, transfer_123_share
+from netdisk import scan_telegram_channel, transfer_115_share
 
 
 def main():
-    parser = argparse.ArgumentParser(description="扫描 Telegram 频道中的网盘分享链接")
+    parser = argparse.ArgumentParser(description="扫描 Telegram 频道中的 115 分享链接")
     parser.add_argument("--channel", required=True, help="Telegram 频道链接，如 https://t.me/s/xxx 或 https://t.me/xxx")
     parser.add_argument("--limit", type=int, default=20, help="扫描最新消息条数")
     parser.add_argument("--transfer", action="store_true", help="把发现的分享链接转存")
@@ -41,45 +41,34 @@ def main():
         print("(未获取到消息，频道可能不存在或需要代理访问)")
         sys.exit(0)
 
-    total_115 = 0
-    total_123 = 0
+    total = 0
     for msg in messages:
-        links_115 = msg["links"]["115"]
-        links_123 = msg["links"]["123"]
-        if not links_115 and not links_123:
+        links = msg["links"]
+        if not links:
             continue
-        total_115 += len(links_115)
-        total_123 += len(links_123)
+        total += len(links)
         print(f"--- 消息 {msg['id']} ({msg['date']}) ---")
         print(f"    文本: {msg['text'][:120]}")
-        for link in links_115:
+        for link in links:
             print(f"    🅰️ 115: {link}")
-        for link in links_123:
-            print(f"    🅱️ 123: {link.split(chr(25552)+chr(21462))[0].strip() or link}")
         print()
 
-    if not total_115 and not total_123:
-        print("(频道最新消息中未发现 115 / 123 分享链接)")
+    if not total:
+        print("(频道最新消息中未发现 115 分享链接)")
         sys.exit(0)
 
     if not args.transfer:
-        print(f"共发现 {total_115} 个 115 链接、{total_123} 个 123 链接。加 --transfer --target-pid <ID> 可自动转存。")
+        print(f"共发现 {total} 个 115 链接。加 --transfer --target-pid <ID> 可自动转存。")
         sys.exit(0)
 
     print(f"开始转存到目录 {args.target_pid} ...\n")
+    cookies = load_cookies(resolve_cookies_path(args.cookies_path))
     ok_count = 0
     fail_count = 0
     for msg in messages:
-        for link in msg["links"]["115"]:
-            cookies = load_cookies(resolve_cookies_path(args.cookies_path))
+        for link in msg["links"]:
             ok, msg_text = transfer_115_share(cookies, link, args.target_pid)
             print(f"{'✅' if ok else '❌'} [115] {link} -> {msg_text}")
-            ok_count += 1 if ok else 0
-            fail_count += 0 if ok else 1
-        for link in msg["links"]["123"]:
-            client = get_123_client()
-            ok, msg_text = transfer_123_share(client, link, args.target_pid)
-            print(f"{'✅' if ok else '❌'} [123] {link} -> {msg_text}")
             ok_count += 1 if ok else 0
             fail_count += 0 if ok else 1
 

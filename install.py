@@ -448,7 +448,6 @@ def main() -> None:
     install_dependencies(target_dir, args.no_deps)
     print(f"Installed {SKILL_NAME} skill to: {target_dir}")
     print("First use will start 115 QR login automatically if ~/.115-cookies is missing or empty.")
-    print("123 token setup: python3 \"{}\" --disk 123 --token <token>".format(target_dir / "scripts" / "save_cookies.py"))
     print(f"Manual login command: {sys.executable} \"{target_dir / 'scripts' / 'login.py'}\" --no-open")
 
 

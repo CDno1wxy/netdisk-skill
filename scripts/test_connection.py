@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-测试网盘连接状态（115 / 123）。
+测试 115 网盘连接状态，显示完整账户信息。
 
 用法:
-    python3 test_connection.py              # 测试 115
-    python3 test_connection.py --disk 123   # 测试 123
+    python3 test_connection.py
 """
 
 import os
@@ -23,10 +22,9 @@ from lib import (
     print_item,
     require_success,
 )
-from netdisk import get_123_client, list_123_files, print_123_item
 
 
-def test_115():
+def main():
     print("🔌 正在连接 115 网盘...\n")
     client = get_client()
     summary = load_basic_info(client=client)
@@ -58,34 +56,6 @@ def test_115():
         print(f"  ⚠️ 获取离线配额失败: {concise_error(e)}")
 
     print("\n✅ 115 网盘基础信息读取完成!")
-
-
-def test_123():
-    print("🔌 正在连接 123 网盘...\n")
-    client = get_123_client()
-    print("✅ 连接成功!")
-    print("\n═══ 根目录预览 ═══")
-    try:
-        items = list_123_files(client.token, parent_file_id=0, limit=10)
-        if not items:
-            print("  (空目录)")
-        for item in items:
-            print_123_item(item)
-    except Exception as exc:
-        print(f"  ⚠️ 获取根目录预览失败: {concise_error(exc)}")
-    print("\n✅ 123 网盘基础信息读取完成!")
-
-
-def main():
-    if "--disk" in sys.argv:
-        disk_idx = sys.argv.index("--disk")
-        disk = sys.argv[disk_idx + 1].lower()
-    else:
-        disk = "115"
-    if disk == "123":
-        test_123()
-    else:
-        test_115()
 
 
 if __name__ == "__main__":

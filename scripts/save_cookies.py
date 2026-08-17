@@ -1,27 +1,21 @@
 #!/usr/bin/env python3
 """
-保存网盘凭据并验证有效性。
+保存 115 网盘 Cookies 到标准路径并验证有效性。
 
-115 用法:
+用法:
     python3 save_cookies.py --stdin     # 从标准输入读取 cookies
     python3 save_cookies.py --env       # 从 P115_COOKIES 读取 cookies
     python3 save_cookies.py              # 交互式输入
     python3 save_cookies.py 'UID=xxx; CID=xxx; SEID=xxx; KID=xxx'
     python3 save_cookies.py --test       # 仅测试已有 cookies 是否有效
-
-123 用法:
-    python3 save_cookies.py --disk 123 --token <token>   # 保存 123 token
-    python3 save_cookies.py --disk 123 --test            # 仅测试已有 token 是否有效
 """
 
 import argparse
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import COOKIES_PATH, format_size, load_cookies, require_success
-from netdisk import get_123_client, load_123_token, save_123_token
+from lib import COOKIES_PATH, format_size, import_p115client, load_cookies, require_success
 
 
 def validate_cookies_format(cookies: str) -> bool:
@@ -32,10 +26,9 @@ def validate_cookies_format(cookies: str) -> bool:
     return all(key in cookies for key in required)
 
 
-def test_115_connection(cookies: str) -> bool:
+def test_connection(cookies: str) -> bool:
     """测试 115 cookies 有效性。"""
     try:
-        from lib import import_p115client
         P115Client = import_p115client()
         client = P115Client(cookies)
         info = require_success(client.user_info(), "验证 Cookies")
@@ -55,51 +48,18 @@ def test_115_connection(cookies: str) -> bool:
         return False
 
 
-def test_123_connection(token: str) -> bool:
-    """测试 123 token 有效性。"""
-    try:
-        client = get_123_client(token=token)
-        print("✅ 连接成功! 123 token 有效")
-        return True
-    except Exception as e:
-        print(f"❌ 连接失败: {e}")
-        return False
-
-
 def main():
-    parser = argparse.ArgumentParser(description="保存并验证网盘凭据（115 cookies / 123 token）")
+    parser = argparse.ArgumentParser(description="保存并验证 115 网盘 Cookies")
     parser.add_argument("cookies", nargs="?", help="115 cookies 字符串；不推荐，可能进入 shell 历史")
     parser.add_argument("--stdin", action="store_true", help="从标准输入读取 cookies")
     parser.add_argument("--env", action="store_true", help="从 P115_COOKIES 环境变量读取 cookies")
-    parser.add_argument("--test", action="store_true", help="仅测试已有凭据是否有效")
-    parser.add_argument("--disk", choices=["115", "123"], default="115", help="网盘类型")
-    parser.add_argument("--token", help="123 token（--disk 123 时使用）")
+    parser.add_argument("--test", action="store_true", help="仅测试已有 cookies 是否有效")
     args = parser.parse_args()
 
-    if args.disk == "123":
-        if args.test:
-            token = load_123_token()
-            ok = test_123_connection(token)
-            sys.exit(0 if ok else 1)
-        token = args.token or os.environ.get("P123_TOKEN", "")
-        if not token:
-            print("请输入 123 网盘 token:")
-            token = input("> ").strip()
-        if not token:
-            sys.exit(1)
-        ok = test_123_connection(token)
-        if not ok:
-            sys.exit(1)
-        path = save_123_token(token)
-        print(f"✅ Token 已保存到: {path}")
-        print("\n🎉 完成! 后续可直接使用 --disk 123 的 browse / transfer / offline 等工具。")
-        sys.exit(0)
-
-    # 115 路径
     if args.test:
         cookies = load_cookies(COOKIES_PATH)
         print(f"📂 读取 cookies: {COOKIES_PATH}")
-        ok = test_115_connection(cookies)
+        ok = test_connection(cookies)
         sys.exit(0 if ok else 1)
 
     if args.stdin:
@@ -120,7 +80,7 @@ def main():
         sys.exit(1)
 
     print("🔌 测试连接...")
-    if not test_115_connection(cookies):
+    if not test_connection(cookies):
         sys.exit(1)
 
     with COOKIES_PATH.open("w", encoding="utf-8") as f:

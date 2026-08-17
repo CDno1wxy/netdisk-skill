@@ -1,12 +1,12 @@
 interface:
-  display_name: "Netdisk (115/123)"
-  short_description: "Scan login, browse/transfer/search files, offline downloads on 115 and 123 netdisks"
+  display_name: "115 Netdisk"
+  short_description: "Scan login, browse/search/transfer files, offline downloads on 115 netdisk"
   default_prompt: "Use $netdisk to scan login to 115 Netdisk, save cookies, and manage netdisk operations."
   trigger_descriptions:
-    - "115/123 网盘操作"
+    - "115 网盘操作"
     - "115 扫码登录"
-    - "分享链接转存"
-    - "网盘离线下载"
+    - "115 分享链接转存"
+    - "115 离线下载"
 
 policy:
   allow_implicit_invocation: true
