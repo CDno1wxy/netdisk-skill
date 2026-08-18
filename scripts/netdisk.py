@@ -356,6 +356,7 @@ def scan_telegram_channel(channel_url: str, limit: int = 20, timeout: int = 15) 
 TV_KEYWORDS = {
     "patterns": [
         r"S\d{1,3}E\d{1,3}",
+        r"\bS\d{1,3}\b",
         r"[Ee][Pp]?\d{1,3}",
         r"第[0-9一二三四五六七八九十]+集",
         r"[第].[季]",
@@ -386,7 +387,10 @@ class TMDBHelper:
         tmdb_match = re.search(tmdb_id_pattern, folder_name)
         tmdb_id = tmdb_match.group(1) if tmdb_match else None
 
+        original_name = folder_name
         cleaned = folder_name.replace("（", "(").replace("）", ")")
+        cleaned = re.sub(r"^(?:【[^】]*】|\[[^\]]*\])+\s*", "", cleaned)
+        title_source = re.split(r"[\[【.]", cleaned, maxsplit=1)[0].strip(" ._-")
         cleaned = re.sub(r"[\s\-_]+", " ", cleaned).strip()
         cleaned = re.sub(r"\[.*?\]|\{.*?\}", "", cleaned).strip()
         format_patterns = [
@@ -402,12 +406,15 @@ class TMDBHelper:
             cleaned = re.sub(re.escape(tmdb_match.group(0)), "", cleaned).strip()
 
         title = None
-        year = None
+        year_match = re.search(r"\b(19\d{2}|20\d{2})\b", original_name)
+        year = year_match.group(1) if year_match else None
+        if any("\u4e00" <= char <= "\u9fff" for char in title_source) and len(title_source) >= 2:
+            title = title_source
         try:
             import guessit
             guess = guessit.guessit(cleaned)
-            title = guess.get("title")
-            year = guess.get("year")
+            title = title or guess.get("title")
+            year = year or guess.get("year")
         except Exception:
             pass
 
@@ -443,6 +450,8 @@ class TMDBHelper:
             return {}
 
     def _compact(self, data: dict, media_type: str) -> dict:
+        genres = data.get("genres") or []
+        genre_ids = data.get("genre_ids") or [item.get("id") for item in genres if isinstance(item, dict)]
         return {
             "media_type": media_type,
             "tmdb_id": data.get("id"),
@@ -452,13 +461,14 @@ class TMDBHelper:
             "overview": data.get("overview", ""),
             "poster_path": data.get("poster_path", ""),
             "vote_average": data.get("vote_average"),
+            "genre_ids": [int(item) for item in genre_ids if str(item).isdigit()],
         }
 
     def identify(self, folder_name: str, file_name: str = "") -> dict:
         """识别影视信息。根据文件名/文件夹名判断剧集或电影，返回 TMDB 元数据。"""
         is_tv = False
         for pattern in TV_KEYWORDS["patterns"]:
-            if re.search(pattern, file_name):
+            if re.search(pattern, file_name) or re.search(pattern, folder_name, re.IGNORECASE):
                 is_tv = True
                 break
         if not is_tv:

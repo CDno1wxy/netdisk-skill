@@ -172,6 +172,9 @@ def show_paths(client):
 
 def main():
     args = sys.argv[1:]
+    if not args or args[0] in ('-h', '--help'):
+        print(__doc__.strip())
+        return
     client = get_client()
 
     if "--list" in args:
