@@ -1,6 +1,8 @@
 # Netdisk Skill（115 网盘自动化）
 
-给 Codex / AI agent 使用的 115 网盘自动化 skill，合并自两个项目：
+这是一个面向 Codex、OpenAI Codex CLI 及其他 AI Agent 的 115 网盘自动化 Skill，不是面向普通用户的独立网盘客户端。Agent 可通过本仓库的 `SKILL.md` 和脚本执行登录、离线下载、分享转存、目录整理及 TMDB 媒体识别。
+
+本项目合并自两个项目：
 
 - [chongchong59699/115-netdisk-skill](https://github.com/chongchong59699/115-netdisk-skill)：115 扫码登录、cookies、浏览、搜索、离线下载
 - [walkingddd/TgtoDrive](https://github.com/walkingddd/TgtoDrive)（v6.6.4）：115 分享链接转存、目录整理与清理、Telegram 频道监控、TMDB 影视识别
