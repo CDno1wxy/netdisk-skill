@@ -19,7 +19,7 @@
 | 离线下载 | `offline_download.py` | magnet/ed2k/HTTP 任务、列表、配额 |
 | 分享转存 | `transfer_share.py` | 115 分享链接转存到指定目录 |
 | 目录整理 | `move_clean.py` | 递归移动文件、清理空目录、清空回收站 |
-| TMDB 自动整理 | `organize.py` | 按 TMDB 匹配电影 / 剧集目录，移动内容并清理发布页垃圾 |
+| TMDB 自动整理 | `organize.py` | 按 TMDB 匹配电影 / 剧集目录，整体移动并保留全部文件 |
 | 频道监控 | `monitor.py` | 扫描 Telegram 频道中的 115 分享链接 |
 | TMDB 识别 | `identify.py` | 电影 / 剧集名称识别（TMDB） |
 
@@ -91,7 +91,7 @@ python scripts/organize.py --apply
 │   ├── login.py             # 115 扫码登录
 │   ├── monitor.py           # Telegram 频道监控
 │   ├── move_clean.py        # 目录整理与清理
-│   ├── organize.py          # TMDB 自动整理与发布页垃圾清理
+│   ├── organize.py          # TMDB 自动整理，整体保留并移动目录内容
 │   ├── netdisk.py           # 合并扩展库（转存/监控/TMDB）
 │   ├── offline_download.py  # 离线下载
 │   ├── save_cookies.py      # cookies 保存与验证
