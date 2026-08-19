@@ -387,6 +387,8 @@ class TMDBHelper:
                     self.tavily_api_key = ""
         self.searchix_url = ""
         self.searchix_headers = {}
+        self._official_cache = {}
+        self._search_cache = {}
         config_path = Path("~/.codex/config.toml").expanduser()
         try:
             config = tomllib.loads(config_path.read_text(encoding="utf-8"))
@@ -465,12 +467,17 @@ class TMDBHelper:
         return re.sub(r"[^\w\u4e00-\u9fff]+", "", value)
 
     def _official_title_candidates(self, title: str, year: Optional[str]) -> List[str]:
+        cache_key = (self._title_key(title), str(year or ""))
+        if cache_key in self._official_cache:
+            return self._official_cache[cache_key]
         if self.tavily_api_key:
             candidates = self._tavily_title_candidates(title, year)
             if candidates:
+                self._official_cache[cache_key] = candidates
                 return candidates
         candidates = self._searchix_title_candidates(title, year)
         if candidates:
+            self._official_cache[cache_key] = candidates
             return candidates
         query = f"{title} {year} 电影" if year else title
         try:
@@ -490,6 +497,7 @@ class TMDBHelper:
             response.raise_for_status()
             results = response.json().get("query", {}).get("search", [])
         except Exception:
+            self._official_cache[cache_key] = []
             return []
 
         candidates = []
@@ -497,6 +505,7 @@ class TMDBHelper:
             name = re.sub(r"\s*[（(](?:电影|电视剧|纪录片|动画片|短片)[）)]$", "", result.get("title", "")).strip()
             if name and self._related_title(title, name) and name not in candidates:
                 candidates.append(name)
+        self._official_cache[cache_key] = candidates
         return candidates
 
     def _tavily_title_candidates(self, title: str, year: Optional[str]) -> List[str]:
@@ -594,6 +603,9 @@ class TMDBHelper:
         return bool(first_words and second_words and len(first_words & second_words) >= 1)
 
     def _search(self, title, year, media_type: str, language: str = "zh-CN") -> dict:
+        cache_key = (self._title_key(title), str(year or ""), media_type, language)
+        if cache_key in self._search_cache:
+            return self._search_cache[cache_key]
         params = {"query": title, "language": language, "page": 1}
         if year:
             params["year"] = year
@@ -601,6 +613,7 @@ class TMDBHelper:
             data = self._request(f"/search/{media_type}", params)
             results = data.get("results") or []
             if not results:
+                self._search_cache[cache_key] = {}
                 return {}
             title_key = self._title_key(title)
             scored = []
@@ -610,7 +623,7 @@ class TMDBHelper:
                 item_key = self._title_key(item_title)
                 original_key = self._title_key(original_title)
                 item_year = (item.get("release_date") or item.get("first_air_date") or "")[:4]
-                if year and item_year and item_year != str(year):
+                if year and item_year != str(year):
                     continue
                 score = 0
                 if title_key and title_key == item_key:
@@ -625,11 +638,21 @@ class TMDBHelper:
                     score += 40
                 score += min(float(item.get("popularity") or 0), 20) / 10
                 scored.append((score, item))
-            best_score, best = max(scored, key=lambda pair: pair[0])
+            scored.sort(key=lambda pair: pair[0], reverse=True)
+            best_score, best = scored[0]
+            if len(scored) > 1 and not year:
+                second_score, second = scored[1]
+                best_name = self._title_key(best.get("title") or best.get("name"))
+                second_name = self._title_key(second.get("title") or second.get("name"))
+                if best_name == second_name and best_score - second_score < 15:
+                    self._search_cache[cache_key] = {}
+                    return {}
             if best_score < 45 or (title_key.isdigit() and title_key != self._title_key(best.get("title") or best.get("name"))):
+                self._search_cache[cache_key] = {}
                 return {}
             metadata = self._compact(best, media_type)
             metadata["match_score"] = round(best_score, 2)
+            self._search_cache[cache_key] = metadata
             return metadata
         except Exception:
             return {}
@@ -679,16 +702,26 @@ class TMDBHelper:
                 return metadata
         official_titles = self._official_title_candidates(parsed["title"], parsed.get("year"))
         titles = official_titles + [parsed["title"]]
+        media_types = [media_type] if is_tv else ["movie", "tv"]
         matches = []
-        for title in titles:
-            metadata = self._search(title, parsed.get("year"), media_type)
-            if metadata:
-                matches.append(metadata)
-            if not any("\u4e00" <= char <= "\u9fff" for char in title):
-                metadata = self._search(title, parsed.get("year"), media_type, language="en-US")
+        for candidate_type in media_types:
+            for title in titles:
+                metadata = self._search(title, parsed.get("year"), candidate_type)
                 if metadata:
                     matches.append(metadata)
-        best = max(matches, key=lambda item: item.get("match_score", 0), default={})
+                if not any("\u4e00" <= char <= "\u9fff" for char in title):
+                    metadata = self._search(title, parsed.get("year"), candidate_type, language="en-US")
+                    if metadata:
+                        matches.append(metadata)
+        unique_matches = {}
+        for item in matches:
+            tmdb_id = str(item.get("tmdb_id") or "")
+            if tmdb_id and item.get("match_score", 0) > unique_matches.get(tmdb_id, {}).get("match_score", -1):
+                unique_matches[tmdb_id] = item
+        ranked = sorted(unique_matches.values(), key=lambda item: item.get("match_score", 0), reverse=True)
+        best = ranked[0] if ranked else {}
+        if len(ranked) > 1 and ranked[0].get("match_score", 0) - ranked[1].get("match_score", 0) < 8:
+            return {}
         canonical_title = self._title_key(best.get("title") or "") if best else ""
         if best and (canonical_title in {"电影", "影片", "未知", "2160p", "1080p", "4k"} or not best.get("year")):
             return {}
