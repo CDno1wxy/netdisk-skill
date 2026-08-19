@@ -150,8 +150,12 @@ def organize(args):
     helper = TMDBHelper(resolve_api_key(args.api_key))
     target_index = build_target_index(client)
     candidates = []
+    inspected = 0
     for source_name, source_id in DEFAULT_SOURCE_PIDS.items():
         for item in list_children(client, source_id):
+            if args.limit and inspected >= args.limit:
+                break
+            inspected += 1
             item_id = normalized_id(item)
             item_name = normalized_name(item)
             if not item_id or not item_name or not is_directory(item):
@@ -199,6 +203,7 @@ def main():
     parser.add_argument("--apply", action="store_true", help="执行实际移动和清理；默认只演练")
     parser.add_argument("--api-key", default="", help="TMDB API Key（默认读取环境变量或 ~/.tmdb-api-key）")
     parser.add_argument("--cookies-path", help="115 cookies 文件路径（默认 ~/.115-cookies）")
+    parser.add_argument("--limit", type=int, default=0, help="本次最多处理多少个源目录；0 表示不限制")
     organize(parser.parse_args())
 
 
