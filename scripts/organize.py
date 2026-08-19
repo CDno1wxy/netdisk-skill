@@ -203,17 +203,31 @@ def organize(args):
         return
 
     totals = {"moved_items": 0, "deleted_files": 0, "deleted_dirs": 0, "failed": 0}
-    for source_name, source_id, source_item_name, category, category_parent_id, target_id, target_name in candidates:
-        print(f"\n📂 整理: {source_name}/{source_item_name} -> 整理/{category}/{target_name}")
+    prepared = []
+    print("\n📝 第一阶段：统一重命名源目录")
+    for candidate in candidates:
+        source_name, source_id, source_item_name, category, category_parent_id, target_id, target_name = candidate
+        try:
+            rename_item(client, source_id, target_name)
+            prepared.append(candidate)
+            print(f"   ✅ {source_item_name} -> {target_name}")
+        except Exception as exc:
+            totals["failed"] += 1
+            print(f"   ❌ 重命名失败: {source_item_name} - {exc}")
+    if prepared:
+        time.sleep(5)
+
+    print("\n📦 第二阶段：统一整体移动目录")
+    for source_name, source_id, source_item_name, category, category_parent_id, target_id, target_name in prepared:
+        print(f"\n📂 整理: {target_name} -> 整理/{category}")
         if target_id:
             result = move_contents(client, source_id, target_id, dry_run=False)
         else:
             result = {"moved_items": 0, "deleted_files": 0, "deleted_dirs": 0, "failed": 0}
             try:
-                rename_item(client, source_id, target_name)
                 move_item(client, source_id, category_parent_id)
                 result["moved_items"] = 1
-                print(f"   📦 已重命名并整体移动目录: {target_name}")
+                print(f"   📦 已整体移动目录: {target_name}")
             except Exception as exc:
                 result["failed"] = 1
                 print(f"   ❌ 目录整体移动失败: {exc}")
