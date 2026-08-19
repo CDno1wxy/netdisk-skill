@@ -557,6 +557,8 @@ class TMDBHelper:
                 item_key = self._title_key(item_title)
                 original_key = self._title_key(original_title)
                 item_year = (item.get("release_date") or item.get("first_air_date") or "")[:4]
+                if year and item_year and item_year != str(year):
+                    continue
                 score = 0
                 if title_key and title_key == item_key:
                     score += 100
@@ -568,8 +570,6 @@ class TMDBHelper:
                     score += 45
                 if year and item_year == str(year):
                     score += 40
-                elif year and item_year and abs(int(item_year) - int(year)) <= 1:
-                    score += 10
                 score += min(float(item.get("popularity") or 0), 20) / 10
                 scored.append((score, item))
             best_score, best = max(scored, key=lambda pair: pair[0])
