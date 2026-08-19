@@ -625,4 +625,10 @@ class TMDBHelper:
             metadata = self._search(title, parsed.get("year"), media_type)
             if metadata:
                 matches.append(metadata)
-        return max(matches, key=lambda item: item.get("match_score", 0), default={})
+        best = max(matches, key=lambda item: item.get("match_score", 0), default={})
+        if best and not parsed.get("year"):
+            returned_title = best.get("title") or ""
+            returned_original = best.get("original_title") or ""
+            if not self._related_title(parsed["title"], returned_title) and not self._related_title(parsed["title"], returned_original):
+                return {}
+        return best

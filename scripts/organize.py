@@ -9,6 +9,7 @@ import argparse
 import os
 import re
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -103,7 +104,19 @@ def find_media_name(client, parent_id):
 
 
 def move_item(client, item_id, target_id):
-    response = client.fs_move_app({"ids": item_id, "to_cid": target_id}, app="android")
+    for attempt in range(4):
+        try:
+            response = client.fs_move_app({"ids": item_id, "to_cid": target_id}, app="android")
+            check_response(response)
+            return
+        except Exception:
+            if attempt == 3:
+                raise
+            time.sleep(5)
+
+
+def rename_item(client, item_id, name):
+    response = client.fs_rename_app((item_id, name), app="android")
     check_response(response)
 
 
@@ -175,12 +188,12 @@ def organize(args):
                 continue
             category = classify(result)
             target = target_index.get((category, str(result["tmdb_id"])))
-            if not target:
-                print(f"⚠️ 未找到整理目录，保留: {item_name} -> {category} / {result.get('title')} ({result.get('tmdb_id')})")
-                continue
-            candidates.append((source_name, item_id, item_name, category, target[0], target[1]))
+            target_id = target[0] if target else ""
+            target_name = target[1] if target else f"{result.get('title')} ({result.get('year')}) {{tmdb-{result.get('tmdb_id')}}}"
+            category_parent_id = DEFAULT_CATEGORY_PIDS[category]
+            candidates.append((source_name, item_id, item_name, category, category_parent_id, target_id, target_name))
             print(f"✅ 匹配: {source_name}/{item_name}")
-            print(f"   -> 整理/{category}/{target[1]}")
+            print(f"   -> 整理/{category}/{target_name}")
 
     if not candidates:
         print("没有找到可移动的明确匹配项。")
@@ -190,9 +203,20 @@ def organize(args):
         return
 
     totals = {"moved_items": 0, "deleted_files": 0, "deleted_dirs": 0, "failed": 0}
-    for source_name, source_id, source_item_name, category, target_id, target_name in candidates:
+    for source_name, source_id, source_item_name, category, category_parent_id, target_id, target_name in candidates:
         print(f"\n📂 整理: {source_name}/{source_item_name} -> 整理/{category}/{target_name}")
-        result = move_contents(client, source_id, target_id, dry_run=False)
+        if target_id:
+            result = move_contents(client, source_id, target_id, dry_run=False)
+        else:
+            result = {"moved_items": 0, "deleted_files": 0, "deleted_dirs": 0, "failed": 0}
+            try:
+                rename_item(client, source_id, target_name)
+                move_item(client, source_id, category_parent_id)
+                result["moved_items"] = 1
+                print(f"   📦 已重命名并整体移动目录: {target_name}")
+            except Exception as exc:
+                result["failed"] = 1
+                print(f"   ❌ 目录整体移动失败: {exc}")
         for key in totals:
             totals[key] += result.get(key, 0)
     print(
