@@ -633,6 +633,9 @@ class TMDBHelper:
             if metadata:
                 matches.append(metadata)
         best = max(matches, key=lambda item: item.get("match_score", 0), default={})
+        canonical_title = self._title_key(best.get("title") or "") if best else ""
+        if best and (canonical_title in {"电影", "影片", "未知", "2160p", "1080p", "4k"} or not best.get("year")):
+            return {}
         if best and not parsed.get("year"):
             returned_title = best.get("title") or ""
             returned_original = best.get("original_title") or ""

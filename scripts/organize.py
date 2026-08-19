@@ -179,10 +179,17 @@ def organize(args):
             if not item_id or not item_name or not is_directory(item):
                 continue
             result = helper.identify(item_name)
-            if not result or result.get("error") or not result.get("tmdb_id"):
+            noisy_title = bool(re.search(r"[\u4e00-\u9fff][A-Za-z]{1,}[\u4e00-\u9fff]", item_name))
+            if not result or result.get("error") or not result.get("tmdb_id") or noisy_title:
                 media_name = find_media_name(client, item_id)
                 if media_name:
-                    result = helper.identify(media_name, media_name)
+                    media_noisy = bool(re.search(r"[\u4e00-\u9fff][A-Za-z]{1,}[\u4e00-\u9fff]", media_name))
+                    if not media_noisy:
+                        media_result = helper.identify(media_name, media_name)
+                        if media_result and not media_result.get("error") and media_result.get("tmdb_id"):
+                            result = media_result
+                    elif noisy_title:
+                        result = {}
             if not result or result.get("error") or not result.get("tmdb_id"):
                 print(f"⚠️ 未识别，保留: {source_name}/{item_name}")
                 continue
