@@ -534,8 +534,9 @@ class TMDBHelper:
             return True
         first_cjk = {char for char in first_key if "\u4e00" <= char <= "\u9fff"}
         second_cjk = {char for char in second_key if "\u4e00" <= char <= "\u9fff"}
-        if first_cjk and second_cjk and len(first_cjk & second_cjk) >= 2:
-            return True
+        shared_cjk = len(first_cjk & second_cjk)
+        if first_cjk and second_cjk and shared_cjk >= 2:
+            return shared_cjk / min(len(first_cjk), len(second_cjk)) >= 0.6
         first_words = set(re.findall(r"[a-z0-9]+", first_key))
         second_words = set(re.findall(r"[a-z0-9]+", second_key))
         return bool(first_words and second_words and len(first_words & second_words) >= 1)
@@ -612,6 +613,12 @@ class TMDBHelper:
         parsed = self.parse_metadata(folder_name)
         if not parsed.get("title") and not parsed.get("tmdb_id"):
             return {"error": "无法从名称中解析出标题", "parsed": parsed}
+        if parsed.get("title") in {"电影", "影片", "未知", "2160p", "1080p", "4k"}:
+            return {"error": "标题过于泛化", "parsed": parsed}
+        season_match = re.match(r"^(.+?)(\d{1,2})$", parsed.get("title") or "")
+        if media_type == "movie" and not parsed.get("year") and season_match and any("\u4e00" <= char <= "\u9fff" for char in season_match.group(1)):
+            media_type = "tv"
+            parsed["title"] = season_match.group(1)
 
         if parsed.get("tmdb_id"):
             actual_media_type = "tv" if media_type == "anime" else media_type
@@ -627,6 +634,11 @@ class TMDBHelper:
                 matches.append(metadata)
         best = max(matches, key=lambda item: item.get("match_score", 0), default={})
         if best and not parsed.get("year"):
+            returned_title = best.get("title") or ""
+            returned_original = best.get("original_title") or ""
+            if not self._related_title(parsed["title"], returned_title) and not self._related_title(parsed["title"], returned_original):
+                return {}
+        if best and any("\u4e00" <= char <= "\u9fff" for char in parsed.get("title", "")):
             returned_title = best.get("title") or ""
             returned_original = best.get("original_title") or ""
             if not self._related_title(parsed["title"], returned_title) and not self._related_title(parsed["title"], returned_original):
