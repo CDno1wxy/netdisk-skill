@@ -364,7 +364,7 @@ TV_KEYWORDS = {
         r"全\d{1,3}集",
         r"[第].[季]",
     ],
-    "folder_keywords": ["season", "seasons", "季", "多季", "第.季", r"\bs\d\b"],
+    "folder_keywords": ["season", "seasons", "季", "多季", "第.季", "韩剧", "美剧", "日剧", "台剧", "国产剧", r"\bs\d\b"],
 }
 
 
@@ -571,6 +571,7 @@ class TMDBHelper:
         if related:
             return related[:3]
         answer_candidates = []
+        answer = "\n".join(text_parts)
         for name in candidates:
             if name not in answer_candidates and name in answer:
                 answer_candidates.append(name)
@@ -592,8 +593,8 @@ class TMDBHelper:
         second_words = set(re.findall(r"[a-z0-9]+", second_key))
         return bool(first_words and second_words and len(first_words & second_words) >= 1)
 
-    def _search(self, title, year, media_type: str) -> dict:
-        params = {"query": title, "language": "zh-CN", "page": 1}
+    def _search(self, title, year, media_type: str, language: str = "zh-CN") -> dict:
+        params = {"query": title, "language": language, "page": 1}
         if year:
             params["year"] = year
         try:
@@ -683,6 +684,10 @@ class TMDBHelper:
             metadata = self._search(title, parsed.get("year"), media_type)
             if metadata:
                 matches.append(metadata)
+            if not any("\u4e00" <= char <= "\u9fff" for char in title):
+                metadata = self._search(title, parsed.get("year"), media_type, language="en-US")
+                if metadata:
+                    matches.append(metadata)
         best = max(matches, key=lambda item: item.get("match_score", 0), default={})
         canonical_title = self._title_key(best.get("title") or "") if best else ""
         if best and (canonical_title in {"电影", "影片", "未知", "2160p", "1080p", "4k"} or not best.get("year")):
