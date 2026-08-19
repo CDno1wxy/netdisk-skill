@@ -504,9 +504,9 @@ class TMDBHelper:
         except Exception:
             return []
 
-        text_parts = [data.get("answer") or ""]
+        answer = data.get("answer") or ""
+        text_parts = [answer]
         text_parts.extend(item.get("title", "") for item in data.get("results") or [])
-        text_parts.extend(item.get("content", "") for item in data.get("results") or [])
         candidates = []
         for text in text_parts:
             for match in re.findall(r"《([^》]{2,40})》|[“\"]([^”\"]{2,40})[”\"]", text):
@@ -516,7 +516,14 @@ class TMDBHelper:
             for name in re.findall(r"[\u4e00-\u9fff][\u4e00-\u9fff·]{1,18}", text):
                 if name not in candidates and name not in {"官方中文片名", "影视作品的官方中文片名"}:
                     candidates.append(name)
-        return [name for name in candidates if self._related_title(title, name) or len(candidates) == 1]
+        related = [name for name in candidates if self._related_title(title, name)]
+        if related:
+            return related[:3]
+        answer_candidates = []
+        for name in candidates:
+            if name not in answer_candidates and name in answer:
+                answer_candidates.append(name)
+        return answer_candidates[:2]
 
     def _related_title(self, first: str, second: str) -> bool:
         first_key = self._title_key(first)
