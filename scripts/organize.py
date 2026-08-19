@@ -76,6 +76,13 @@ def classify(metadata):
     return "剧集" if metadata.get("media_type") == "tv" else "电影"
 
 
+def is_noisy_name(name):
+    markers = ("发布", "首发", "梦幻天堂", "龙网", "飞鸟娱乐", "6v电影", "阳光电影", "UIndex", "www.")
+    return bool(re.search(r"[\u4e00-\u9fff][A-Za-z]{1,}[\u4e00-\u9fff]", name)) or any(
+        marker.lower() in name.lower() for marker in markers
+    )
+
+
 def build_target_index(client):
     index = {}
     for category, parent_id in DEFAULT_CATEGORY_PIDS.items():
@@ -179,17 +186,22 @@ def organize(args):
             if not item_id or not item_name or not is_directory(item):
                 continue
             result = helper.identify(item_name)
-            noisy_title = bool(re.search(r"[\u4e00-\u9fff][A-Za-z]{1,}[\u4e00-\u9fff]", item_name))
+            noisy_title = is_noisy_name(item_name)
             if not result or result.get("error") or not result.get("tmdb_id") or noisy_title:
                 media_name = find_media_name(client, item_id)
                 if media_name:
-                    media_noisy = bool(re.search(r"[\u4e00-\u9fff][A-Za-z]{1,}[\u4e00-\u9fff]", media_name))
+                    media_noisy = is_noisy_name(media_name)
                     if not media_noisy:
                         media_result = helper.identify(media_name, media_name)
                         if media_result and not media_result.get("error") and media_result.get("tmdb_id"):
-                            result = media_result
+                            if result and result.get("tmdb_id") and str(result["tmdb_id"]) != str(media_result["tmdb_id"]):
+                                result = {}
+                            else:
+                                result = media_result
                     elif noisy_title:
                         result = {}
+                elif noisy_title:
+                    result = {}
             if not result or result.get("error") or not result.get("tmdb_id"):
                 print(f"⚠️ 未识别，保留: {source_name}/{item_name}")
                 continue

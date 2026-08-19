@@ -359,7 +359,7 @@ TV_KEYWORDS = {
     "patterns": [
         r"S\d{1,3}E\d{1,3}",
         r"\bS\d{1,3}\b",
-        r"[Ee][Pp]?\d{1,3}",
+        r"(?<![A-Za-z])[Ee][Pp]?\d{1,3}(?![A-Za-z])",
         r"第[0-9一二三四五六七八九十]+集",
         r"全\d{1,3}集",
         r"[第].[季]",
@@ -413,6 +413,7 @@ class TMDBHelper:
         original_name = folder_name
         cleaned = folder_name.replace("（", "(").replace("）", ")")
         cleaned = re.sub(r"^(?:【[^】]*】|\[[^\]]*\])+\s*", "", cleaned)
+        cleaned = re.sub(r"^\[?\d{4}\.\d{1,2}\.\d{1,2}\]?\s*", "", cleaned)
         cleaned = re.sub(r"^(?:[^.\s]*dygod\.org|[^.\s]*6v电影[^.]*|www\.[^\s]+)\s*[._-]+\s*", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"^www\.[^\s]+\s+-\s+", "", cleaned, flags=re.IGNORECASE)
         title_source = re.split(r"[\[【.]", cleaned, maxsplit=1)[0].strip(" ._-")
@@ -431,8 +432,14 @@ class TMDBHelper:
             cleaned = re.sub(re.escape(tmdb_match.group(0)), "", cleaned).strip()
 
         title = None
-        year_matches = re.findall(r"\b(19\d{2}|20\d{2})\b", original_name)
+        metadata_name = re.sub(r"^\[?\d{4}\.\d{1,2}\.\d{1,2}\]?\s*", "", original_name)
+        year_matches = re.findall(r"\b(19\d{2}|20\d{2})\b", metadata_name)
         year = year_matches[-1] if year_matches else None
+        title_position = metadata_name.find(title_source) if title_source else -1
+        if title_position >= 0:
+            following_years = re.findall(r"\b(19\d{2}|20\d{2})\b", metadata_name[title_position:])
+            if following_years:
+                year = following_years[0]
         if any("\u4e00" <= char <= "\u9fff" for char in title_source) and len(title_source) >= 2:
             title = title_source
         try:
@@ -579,12 +586,7 @@ class TMDBHelper:
         related = [name for name in candidates if self._related_title(title, name)]
         if related:
             return related[:3]
-        answer_candidates = []
-        answer = "\n".join(text_parts)
-        for name in candidates:
-            if name not in answer_candidates and name in answer:
-                answer_candidates.append(name)
-        return answer_candidates[:2]
+        return []
 
     def _related_title(self, first: str, second: str) -> bool:
         first_key = self._title_key(first)
@@ -595,6 +597,8 @@ class TMDBHelper:
             return True
         first_cjk = {char for char in first_key if "\u4e00" <= char <= "\u9fff"}
         second_cjk = {char for char in second_key if "\u4e00" <= char <= "\u9fff"}
+        if first_cjk and second_cjk and len(second_cjk) < 3 and len(first_cjk) > len(second_cjk):
+            return False
         shared_cjk = len(first_cjk & second_cjk)
         if first_cjk and second_cjk and shared_cjk >= 2:
             return shared_cjk / min(len(first_cjk), len(second_cjk)) >= 0.6
