@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+import tomllib
 import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -384,6 +385,16 @@ class TMDBHelper:
                     self.tavily_api_key = tavily_key_file.read_text(encoding="utf-8").strip()
                 except OSError:
                     self.tavily_api_key = ""
+        self.searchix_url = ""
+        self.searchix_headers = {}
+        config_path = Path("~/.codex/config.toml").expanduser()
+        try:
+            config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+            searchix = config.get("mcp_servers", {}).get("searchix", {})
+            self.searchix_url = str(searchix.get("url") or "").strip()
+            self.searchix_headers = dict(searchix.get("http_headers") or {})
+        except (OSError, tomllib.TOMLDecodeError):
+            pass
 
     def _request(self, path: str, params: dict) -> dict:
         params = {**params, "api_key": self.api_key}
@@ -458,6 +469,9 @@ class TMDBHelper:
             candidates = self._tavily_title_candidates(title, year)
             if candidates:
                 return candidates
+        candidates = self._searchix_title_candidates(title, year)
+        if candidates:
+            return candidates
         query = f"{title} {year} 电影" if year else title
         try:
             response = self.session.get(
@@ -504,9 +518,46 @@ class TMDBHelper:
         except Exception:
             return []
 
-        answer = data.get("answer") or ""
-        text_parts = [answer]
+        text_parts = [data.get("answer") or ""]
         text_parts.extend(item.get("title", "") for item in data.get("results") or [])
+        return self._extract_title_candidates(title, text_parts)
+
+    def _searchix_title_candidates(self, title: str, year: Optional[str]) -> List[str]:
+        if not self.searchix_url:
+            return []
+        query = f"{title} {year or ''} 影视作品的官方中文片名，只返回片名".strip()
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            **self.searchix_headers,
+        }
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "search_proxy_exa_answer",
+                "arguments": {
+                    "query": query,
+                    "text": True,
+                    "stream": False,
+                    "systemPrompt": "只返回影视作品的官方中文片名，不要解释。",
+                },
+            },
+        }
+        try:
+            response = self.session.post(self.searchix_url, headers=headers, json=payload, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+            result = data.get("result") or {}
+            if result.get("isError"):
+                return []
+            text_parts = [item.get("text", "") for item in result.get("content") or []]
+            return self._extract_title_candidates(title, text_parts)
+        except Exception:
+            return []
+
+    def _extract_title_candidates(self, title: str, text_parts: List[str]) -> List[str]:
         candidates = []
         for text in text_parts:
             for match in re.findall(r"《([^》]{2,40})》|[“\"]([^”\"]{2,40})[”\"]", text):

@@ -43,7 +43,7 @@ Copy-Item -LiteralPath ".\netdisk-skill\scripts" -Destination $targetSkill -Recu
 - 需要 Python 3.12+ 和 `p115client`；扫码登录脚本 `login.py --no-open` 只依赖标准库。
 - Windows 备用扫码登录：`scripts/get_cookie.ps1`（PowerShell 7）或 GitHub Releases 中的 `115-cookie-helper-*` 独立二进制。
 - 频道监控：需要服务器/本机可访问 Telegram（`t.me/s/` 网页版）。
-- TMDB 识别：需要 TMDB API Key（`--api-key`、环境变量 `ENV_TMDB_API_KEY` 或 `~/.tmdb-api-key` 文件）；可选配置 Tavily API Key（环境变量 `TAVILY_API_KEY` 或 `~/.tavily-api-key`），只取 Tavily 的答案和结果标题提取官方片名候选，再交给 TMDB 按标题、年份和类型评分校验。
+- TMDB 识别：需要 TMDB API Key（`--api-key`、环境变量 `ENV_TMDB_API_KEY` 或 `~/.tmdb-api-key` 文件）；优先使用 Tavily（`TAVILY_API_KEY` 或 `~/.tavily-api-key`），Tavily 无结果或额度/服务异常时自动回退到 `~/.codex/config.toml` 中的 `mcp_servers.searchix`，两者都只提供官方片名候选，最终仍交给 TMDB 按标题、年份和类型评分校验。
 
 ## 凭据配置
 

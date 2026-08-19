@@ -72,7 +72,7 @@ python scripts/organize.py --apply
 
 - 115：`~/.115-cookies`（扫码登录自动写入）
 - TMDB：`--api-key`、环境变量 `ENV_TMDB_API_KEY` 或 `~/.tmdb-api-key` 文件
-- Tavily（可选）：环境变量 `TAVILY_API_KEY` 或 `~/.tavily-api-key`，用于先检索官方片名候选，再由 TMDB 按标题、年份和类型校验
+- Tavily（可选）：环境变量 `TAVILY_API_KEY` 或 `~/.tavily-api-key`，用于先检索官方片名候选；Tavily 无结果或额度/服务异常时，自动读取 `~/.codex/config.toml` 的 `mcp_servers.searchix` 作为备用搜索源，再由 TMDB 按标题、年份和类型校验
 
 ## 目录结构
 
