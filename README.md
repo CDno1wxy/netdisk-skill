@@ -72,6 +72,7 @@ python scripts/organize.py --apply
 
 - 115：`~/.115-cookies`（扫码登录自动写入）
 - TMDB：`--api-key`、环境变量 `ENV_TMDB_API_KEY` 或 `~/.tmdb-api-key` 文件
+- Tavily（可选）：环境变量 `TAVILY_API_KEY` 或 `~/.tavily-api-key`，用于先检索官方片名再调用 TMDB
 
 ## 目录结构
 

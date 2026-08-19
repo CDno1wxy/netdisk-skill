@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -359,6 +360,7 @@ TV_KEYWORDS = {
         r"\bS\d{1,3}\b",
         r"[Ee][Pp]?\d{1,3}",
         r"第[0-9一二三四五六七八九十]+集",
+        r"全\d{1,3}集",
         r"[第].[季]",
     ],
     "folder_keywords": ["season", "seasons", "季", "多季", "第.季", r"\bs\d\b"],
@@ -374,6 +376,14 @@ class TMDBHelper:
         self.api_key = api_key
         self.base_url = "https://api.themoviedb.org/3"
         self.session = requests.Session()
+        self.tavily_api_key = os.getenv("TAVILY_API_KEY", "").strip()
+        if not self.tavily_api_key:
+            tavily_key_file = Path("~/.tavily-api-key").expanduser()
+            if tavily_key_file.exists():
+                try:
+                    self.tavily_api_key = tavily_key_file.read_text(encoding="utf-8").strip()
+                except OSError:
+                    self.tavily_api_key = ""
 
     def _request(self, path: str, params: dict) -> dict:
         params = {**params, "api_key": self.api_key}
@@ -390,6 +400,8 @@ class TMDBHelper:
         original_name = folder_name
         cleaned = folder_name.replace("（", "(").replace("）", ")")
         cleaned = re.sub(r"^(?:【[^】]*】|\[[^\]]*\])+\s*", "", cleaned)
+        cleaned = re.sub(r"^(?:[^.\s]*dygod\.org|[^.\s]*6v电影[^.]*|www\.[^\s]+)\s*[._-]+\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"^www\.[^\s]+\s+-\s+", "", cleaned, flags=re.IGNORECASE)
         title_source = re.split(r"[\[【.]", cleaned, maxsplit=1)[0].strip(" ._-")
         cleaned = re.sub(r"[\s\-_]+", " ", cleaned).strip()
         cleaned = re.sub(r"\[.*?\]|\{.*?\}", "", cleaned).strip()
@@ -406,8 +418,8 @@ class TMDBHelper:
             cleaned = re.sub(re.escape(tmdb_match.group(0)), "", cleaned).strip()
 
         title = None
-        year_match = re.search(r"\b(19\d{2}|20\d{2})\b", original_name)
-        year = year_match.group(1) if year_match else None
+        year_matches = re.findall(r"\b(19\d{2}|20\d{2})\b", original_name)
+        year = year_matches[-1] if year_matches else None
         if any("\u4e00" <= char <= "\u9fff" for char in title_source) and len(title_source) >= 2:
             title = title_source
         try:
@@ -436,6 +448,91 @@ class TMDBHelper:
         except Exception:
             return {}
 
+    @staticmethod
+    def _title_key(value: str) -> str:
+        value = unicodedata.normalize("NFKC", value or "").lower()
+        return re.sub(r"[^\w\u4e00-\u9fff]+", "", value)
+
+    def _official_title_candidates(self, title: str, year: Optional[str]) -> List[str]:
+        if self.tavily_api_key:
+            candidates = self._tavily_title_candidates(title, year)
+            if candidates:
+                return candidates
+        query = f"{title} {year} 电影" if year else title
+        try:
+            response = self.session.get(
+                "https://zh.wikipedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "srnamespace": 0,
+                    "srlimit": 5,
+                    "format": "json",
+                },
+                headers={"User-Agent": "netdisk-skill/1.0"},
+                timeout=5,
+            )
+            response.raise_for_status()
+            results = response.json().get("query", {}).get("search", [])
+        except Exception:
+            return []
+
+        candidates = []
+        for result in results:
+            name = re.sub(r"\s*[（(](?:电影|电视剧|纪录片|动画片|短片)[）)]$", "", result.get("title", "")).strip()
+            if name and self._related_title(title, name) and name not in candidates:
+                candidates.append(name)
+        return candidates
+
+    def _tavily_title_candidates(self, title: str, year: Optional[str]) -> List[str]:
+        query = f"{title} {year or ''} 影视作品的官方中文片名，只返回片名".strip()
+        try:
+            response = self.session.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": self.tavily_api_key,
+                    "query": query,
+                    "search_depth": "basic",
+                    "max_results": 5,
+                    "include_answer": True,
+                },
+                timeout=8,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            return []
+
+        text_parts = [data.get("answer") or ""]
+        text_parts.extend(item.get("title", "") for item in data.get("results") or [])
+        text_parts.extend(item.get("content", "") for item in data.get("results") or [])
+        candidates = []
+        for text in text_parts:
+            for match in re.findall(r"《([^》]{2,40})》|[“\"]([^”\"]{2,40})[”\"]", text):
+                name = next((part for part in match if part), "").strip()
+                if name and name not in candidates:
+                    candidates.append(name)
+            for name in re.findall(r"[\u4e00-\u9fff][\u4e00-\u9fff·]{1,18}", text):
+                if name not in candidates and name not in {"官方中文片名", "影视作品的官方中文片名"}:
+                    candidates.append(name)
+        return [name for name in candidates if self._related_title(title, name) or len(candidates) == 1]
+
+    def _related_title(self, first: str, second: str) -> bool:
+        first_key = self._title_key(first)
+        second_key = self._title_key(second)
+        if not first_key or not second_key:
+            return False
+        if first_key == second_key or first_key in second_key or second_key in first_key:
+            return True
+        first_cjk = {char for char in first_key if "\u4e00" <= char <= "\u9fff"}
+        second_cjk = {char for char in second_key if "\u4e00" <= char <= "\u9fff"}
+        if first_cjk and second_cjk and len(first_cjk & second_cjk) >= 2:
+            return True
+        first_words = set(re.findall(r"[a-z0-9]+", first_key))
+        second_words = set(re.findall(r"[a-z0-9]+", second_key))
+        return bool(first_words and second_words and len(first_words & second_words) >= 1)
+
     def _search(self, title, year, media_type: str) -> dict:
         params = {"query": title, "language": "zh-CN", "page": 1}
         if year:
@@ -445,7 +542,35 @@ class TMDBHelper:
             results = data.get("results") or []
             if not results:
                 return {}
-            return self._compact(results[0], media_type)
+            title_key = self._title_key(title)
+            scored = []
+            for item in results:
+                item_title = item.get("title") or item.get("name") or ""
+                original_title = item.get("original_title") or item.get("original_name") or ""
+                item_key = self._title_key(item_title)
+                original_key = self._title_key(original_title)
+                item_year = (item.get("release_date") or item.get("first_air_date") or "")[:4]
+                score = 0
+                if title_key and title_key == item_key:
+                    score += 100
+                elif title_key and title_key == original_key:
+                    score += 95
+                elif title_key and (title_key in item_key or item_key in title_key):
+                    score += 55
+                elif title_key and (title_key in original_key or original_key in title_key):
+                    score += 45
+                if year and item_year == str(year):
+                    score += 40
+                elif year and item_year and abs(int(item_year) - int(year)) <= 1:
+                    score += 10
+                score += min(float(item.get("popularity") or 0), 20) / 10
+                scored.append((score, item))
+            best_score, best = max(scored, key=lambda pair: pair[0])
+            if best_score < 45 or (title_key.isdigit() and title_key != self._title_key(best.get("title") or best.get("name"))):
+                return {}
+            metadata = self._compact(best, media_type)
+            metadata["match_score"] = round(best_score, 2)
+            return metadata
         except Exception:
             return {}
 
@@ -486,5 +611,11 @@ class TMDBHelper:
             metadata = self._get_by_id(parsed["tmdb_id"], actual_media_type)
             if metadata:
                 return metadata
-        metadata = self._search(parsed["title"], parsed.get("year"), media_type)
-        return metadata
+        official_titles = self._official_title_candidates(parsed["title"], parsed.get("year"))
+        titles = official_titles + [parsed["title"]]
+        matches = []
+        for title in titles:
+            metadata = self._search(title, parsed.get("year"), media_type)
+            if metadata:
+                matches.append(metadata)
+        return max(matches, key=lambda item: item.get("match_score", 0), default={})
