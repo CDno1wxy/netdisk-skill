@@ -133,6 +133,59 @@ def delete_item(client, item_id):
     check_response(response)
 
 
+VIDEO_SUFFIXES = (".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".mov", ".flv", ".wmv", ".rmvb")
+SIDEcar_SUFFIXES = (".srt", ".ass", ".ssa", ".sup", ".vtt", ".nfo", ".ac3", ".dts", ".flac", ".mp3")
+JUNK_DIR_MARKERS = ("发布页", "地址", "6v电影", "uindex", "更多无水印", "下载地址")
+
+
+def is_media_or_sidecar(name):
+    return name.lower().endswith(VIDEO_SUFFIXES + SIDEcar_SUFFIXES)
+
+
+def is_junk_dir_name(name):
+    lowered = name.lower()
+    return any(marker.lower() in lowered for marker in JUNK_DIR_MARKERS)
+
+
+def contains_media(client, parent_id):
+    for item in list_children(client, parent_id):
+        if is_directory(item):
+            if contains_media(client, normalized_id(item)):
+                return True
+        elif is_media_or_sidecar(normalized_name(item)):
+            return True
+    return False
+
+
+def cleanup_residue(client, parent_id, dry_run=False):
+    """Remove empty directories and clearly promotional directories left behind."""
+    removed = 0
+    for item in list_children(client, parent_id):
+        if not is_directory(item):
+            continue
+        item_id = normalized_id(item)
+        item_name = normalized_name(item)
+        removed += cleanup_residue(client, item_id, dry_run)
+        children = list_children(client, item_id)
+        if children and not contains_media(client, item_id):
+            if is_junk_dir_name(item_name):
+                if dry_run:
+                    print(f"   🧹 可清理垃圾目录: {item_name}")
+                else:
+                    delete_item(client, item_id)
+                    print(f"   🧹 已清理垃圾目录: {item_name}")
+                removed += 1
+                continue
+        if not children:
+            if dry_run:
+                print(f"   🧹 可清理空目录: {item_name}")
+            else:
+                delete_item(client, item_id)
+                print(f"   🧹 已清理空目录: {item_name}")
+            removed += 1
+    return removed
+
+
 def move_contents(client, source_id, target_id, dry_run):
     stats = {"moved_items": 0, "deleted_files": 0, "deleted_dirs": 0, "failed": 0}
     children = list_children(client, source_id)
@@ -151,6 +204,7 @@ def move_contents(client, source_id, target_id, dry_run):
         except Exception as exc:
             stats["failed"] += 1
             print(f"   ❌ 移动失败: {item_name} - {exc}")
+    stats["deleted_dirs"] += cleanup_residue(client, source_id, dry_run)
 
     result = stats
     if not dry_run:
