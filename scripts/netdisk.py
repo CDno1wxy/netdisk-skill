@@ -608,11 +608,11 @@ class TMDBHelper:
             return shared_cjk / min(len(first_cjk), len(second_cjk)) >= 0.6
         ignored_words = {"a", "an", "and", "in", "is", "of", "on", "r", "the", "to"}
         first_words = {
-            word for word in re.findall(r"[a-z0-9]+", first_key)
+            word for word in re.findall(r"[a-z0-9]+", first.lower())
             if word not in ignored_words and len(word) > 1
         }
         second_words = {
-            word for word in re.findall(r"[a-z0-9]+", second_key)
+            word for word in re.findall(r"[a-z0-9]+", second.lower())
             if word not in ignored_words and len(word) > 1
         }
         return bool(first_words and second_words and len(first_words & second_words) >= 1)
@@ -715,19 +715,40 @@ class TMDBHelper:
             metadata = self._get_by_id(parsed["tmdb_id"], actual_media_type)
             if metadata:
                 return metadata
-        official_titles = self._official_title_candidates(parsed["title"], parsed.get("year"))
-        titles = official_titles + [parsed["title"]]
+        official_titles = []
+        titles = [parsed["title"]]
         media_types = [media_type] if is_tv else ["movie", "tv"]
         matches = []
         for candidate_type in media_types:
-            for title in titles:
-                metadata = self._search(title, parsed.get("year"), candidate_type)
+            metadata = self._search(parsed["title"], parsed.get("year"), candidate_type)
+            if metadata:
+                matches.append(metadata)
+            if not any("\u4e00" <= char <= "\u9fff" for char in parsed["title"]):
+                metadata = self._search(parsed["title"], parsed.get("year"), candidate_type, language="en-US")
                 if metadata:
                     matches.append(metadata)
-                if not any("\u4e00" <= char <= "\u9fff" for char in title):
-                    metadata = self._search(title, parsed.get("year"), candidate_type, language="en-US")
+        if not matches:
+            words = re.findall(r"[A-Za-z0-9]+", parsed["title"])
+            if not any("\u4e00" <= char <= "\u9fff" for char in parsed["title"]) and len(words) >= 3:
+                short_titles = [" ".join(words[:2]), " ".join(words[:3])]
+                for short_title in short_titles:
+                    for candidate_type in media_types:
+                        metadata = self._search(short_title, parsed.get("year"), candidate_type, language="en-US")
+                        if metadata:
+                            matches.append(metadata)
+                    if matches:
+                        break
+        if not matches:
+            official_titles = self._official_title_candidates(parsed["title"], parsed.get("year"))
+            for candidate_type in media_types:
+                for title in official_titles:
+                    metadata = self._search(title, parsed.get("year"), candidate_type)
                     if metadata:
                         matches.append(metadata)
+                    if not any("\u4e00" <= char <= "\u9fff" for char in title):
+                        metadata = self._search(title, parsed.get("year"), candidate_type, language="en-US")
+                        if metadata:
+                            matches.append(metadata)
         unique_matches = {}
         for item in matches:
             tmdb_id = str(item.get("tmdb_id") or "")
