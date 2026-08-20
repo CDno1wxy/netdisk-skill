@@ -226,6 +226,7 @@ def organize(args):
     saved_metadata = list(load_metadata().values())
     target_index = build_target_index(client)
     candidates = []
+    totals = {"moved_items": 0, "deleted_files": 0, "deleted_dirs": 0, "failed": 0}
     seen = 0
     inspected = 0
     for source_name, source_id in DEFAULT_SOURCE_PIDS.items():
@@ -295,10 +296,36 @@ def organize(args):
             target_id = target[0] if target else ""
             target_name = target[1] if target else f"{result.get('title')} ({result.get('year')}) {{tmdb-{result.get('tmdb_id')}}}"
             category_parent_id = DEFAULT_CATEGORY_PIDS[category]
-            candidates.append((source_name, item_id, item_name, category, category_parent_id, target_id, target_name))
             print(f"✅ 匹配: {source_name}/{item_name}")
             print(f"   -> 整理/{category}/{target_name}")
+            candidate = (source_name, item_id, item_name, category, category_parent_id, target_id, target_name)
+            if args.apply:
+                try:
+                    rename_item(client, item_id, target_name)
+                    time.sleep(1)
+                    if target_id:
+                        moved = move_contents(client, item_id, target_id, dry_run=False)
+                    else:
+                        move_item(client, item_id, category_parent_id)
+                        moved = {"moved_items": 1, "deleted_files": 0, "deleted_dirs": 0, "failed": 0}
+                        target_index[(category, str(result["tmdb_id"]))] = (item_id, target_name)
+                        print(f"   📦 已整体移动目录: {target_name}")
+                    for key in totals:
+                        totals[key] += moved.get(key, 0)
+                except Exception as exc:
+                    totals["failed"] += 1
+                    print(f"   ❌ 整理失败，保留来源目录: {item_name} - {exc}")
+            else:
+                candidates.append(candidate)
 
+    if args.apply:
+        print(
+            f"\n完成：整体移动 {totals['moved_items']} 项，未删除任何文件，"
+            f"清理空/垃圾目录 {totals['deleted_dirs']} 个，失败 {totals['failed']} 项。"
+        )
+        if totals["failed"]:
+            raise SystemExit(1)
+        return
     if not candidates:
         print("没有找到可移动的明确匹配项。")
         return
