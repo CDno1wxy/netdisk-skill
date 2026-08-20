@@ -286,6 +286,12 @@ def organize(args):
                 continue
             category = classify(result)
             target = target_index.get((category, str(result["tmdb_id"])))
+            if target:
+                target_title = re.sub(r"\s*\{tmdb-\d+\}\s*$", "", target[1], flags=re.IGNORECASE).strip()
+                result_title = result.get("title") or result.get("original_title") or ""
+                if target_title and result_title and not helper._related_title(target_title, result_title):
+                    print(f"⚠️ 目标目录与识别结果不一致，保留: {source_name}/{item_name}")
+                    continue
             target_id = target[0] if target else ""
             target_name = target[1] if target else f"{result.get('title')} ({result.get('year')}) {{tmdb-{result.get('tmdb_id')}}}"
             category_parent_id = DEFAULT_CATEGORY_PIDS[category]
