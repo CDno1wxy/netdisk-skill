@@ -194,6 +194,23 @@ def organize(args):
                     break
             if not result:
                 result = helper.identify(item_name)
+            if result and result.get("tmdb_id"):
+                parsed_title = helper.parse_metadata(item_name).get("title") or ""
+                result_title = result.get("title") or ""
+                original_title = result.get("original_title") or ""
+                saved_match = any(
+                    saved.get("tmdb_id") == result.get("tmdb_id")
+                    and metadata_matches_name(saved, item_name)
+                    for saved in saved_metadata
+                )
+                if (
+                    parsed_title
+                    and not saved_match
+                    and not helper._related_title(parsed_title, result_title)
+                    and not helper._related_title(parsed_title, original_title)
+                ):
+                    print(f"⚠️ 片名与 TMDB 结果不相关，保留: {source_name}/{item_name}")
+                    continue
             noisy_title = is_noisy_name(item_name)
             if not result or result.get("error") or not result.get("tmdb_id") or noisy_title:
                 media_name = find_media_name(client, item_id)
