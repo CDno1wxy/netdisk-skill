@@ -593,7 +593,11 @@ class TMDBHelper:
         second_key = self._title_key(second)
         if not first_key or not second_key:
             return False
-        if first_key == second_key or first_key in second_key or second_key in first_key:
+        if first_key == second_key or (
+            len(first_key) >= 3
+            and len(second_key) >= 3
+            and (first_key in second_key or second_key in first_key)
+        ):
             return True
         first_cjk = {char for char in first_key if "\u4e00" <= char <= "\u9fff"}
         second_cjk = {char for char in second_key if "\u4e00" <= char <= "\u9fff"}
@@ -602,8 +606,15 @@ class TMDBHelper:
         shared_cjk = len(first_cjk & second_cjk)
         if first_cjk and second_cjk and shared_cjk >= 2:
             return shared_cjk / min(len(first_cjk), len(second_cjk)) >= 0.6
-        first_words = set(re.findall(r"[a-z0-9]+", first_key))
-        second_words = set(re.findall(r"[a-z0-9]+", second_key))
+        ignored_words = {"a", "an", "and", "in", "is", "of", "on", "r", "the", "to"}
+        first_words = {
+            word for word in re.findall(r"[a-z0-9]+", first_key)
+            if word not in ignored_words and len(word) > 1
+        }
+        second_words = {
+            word for word in re.findall(r"[a-z0-9]+", second_key)
+            if word not in ignored_words and len(word) > 1
+        }
         return bool(first_words and second_words and len(first_words & second_words) >= 1)
 
     def _search(self, title, year, media_type: str, language: str = "zh-CN") -> dict:
@@ -729,14 +740,14 @@ class TMDBHelper:
         canonical_title = self._title_key(best.get("title") or "") if best else ""
         if best and (canonical_title in {"电影", "影片", "未知", "2160p", "1080p", "4k"} or not best.get("year")):
             return {}
-        if best and not parsed.get("year"):
+        if best:
             returned_title = best.get("title") or ""
             returned_original = best.get("original_title") or ""
-            if not self._related_title(parsed["title"], returned_title) and not self._related_title(parsed["title"], returned_original):
-                return {}
-        if best and any("\u4e00" <= char <= "\u9fff" for char in parsed.get("title", "")):
-            returned_title = best.get("title") or ""
-            returned_original = best.get("original_title") or ""
-            if not self._related_title(parsed["title"], returned_title) and not self._related_title(parsed["title"], returned_original):
+            trusted_titles = [parsed["title"], *official_titles]
+            if not any(
+                self._related_title(candidate, returned_title)
+                or self._related_title(candidate, returned_original)
+                for candidate in trusted_titles
+            ):
                 return {}
         return best

@@ -23,6 +23,8 @@ maybe_reexec_in_skill_venv()
 
 import requests
 
+from download_metadata import fallback_metadata, save_metadata
+from identify import resolve_api_key
 from lib import (
     fail,
     format_size,
@@ -30,6 +32,7 @@ from lib import (
     load_cookies,
     require_success,
 )
+from netdisk import TMDBHelper
 
 LIXIAN_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
@@ -50,6 +53,14 @@ def response_payload(response: dict, action: str) -> dict:
 
 def add_download(client, url: str, save_path: str = None):
     """添加 115 离线任务：优先 SDK，缺失时使用网页 lixian API。"""
+    metadata = fallback_metadata(url)
+    try:
+        identified = TMDBHelper(resolve_api_key("")).identify(metadata["raw_name"])
+        if identified and identified.get("tmdb_id"):
+            metadata.update(identified)
+    except Exception:
+        pass
+    save_metadata(metadata)
     add = getattr(client, "offline_add_url", None)
     if callable(add):
         params = {"url": url}

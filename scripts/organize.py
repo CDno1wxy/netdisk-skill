@@ -14,6 +14,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from identify import resolve_api_key
+from download_metadata import load_metadata, metadata_matches_name
 from lib import get_client_from_cookies, load_cookies, resolve_cookies_path
 from netdisk import TMDBHelper, _normalize_115_item
 from p115client.client import check_response
@@ -168,6 +169,7 @@ def organize(args):
     cookies = load_cookies(resolve_cookies_path(args.cookies_path))
     client = get_client_from_cookies(cookies)
     helper = TMDBHelper(resolve_api_key(args.api_key))
+    saved_metadata = list(load_metadata().values())
     target_index = build_target_index(client)
     candidates = []
     seen = 0
@@ -185,7 +187,13 @@ def organize(args):
             item_name = normalized_name(item)
             if not item_id or not item_name or not is_directory(item):
                 continue
-            result = helper.identify(item_name)
+            result = {}
+            for saved in saved_metadata:
+                if saved.get("tmdb_id") and metadata_matches_name(saved, item_name):
+                    result = saved
+                    break
+            if not result:
+                result = helper.identify(item_name)
             noisy_title = is_noisy_name(item_name)
             if not result or result.get("error") or not result.get("tmdb_id") or noisy_title:
                 media_name = find_media_name(client, item_id)
